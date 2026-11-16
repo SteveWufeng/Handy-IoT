@@ -1,0 +1,33 @@
+{
+  "calendar": {
+    "ics_url": "",
+    "days_ahead": 14,
+    "max_events": 40,
+    "refresh_minutes": 15
+  },
+  "pomodoro": {
+    "work_minutes": 25,
+    "break_minutes": 5,
+    "long_break_minutes": 15,
+    "cycles": 4,
+    "auto_start": true
+  },
+  "music": {
+    "volume": 70,
+    "search_results": 20,
+    "quick_searches": [
+      "lofi hip hop",
+      "jazz cafe",
+      "piano classical"
+    ]
+  },
+  "display": {
+    "fps": 30
+  },
+  "audio": {
+    "enabled": true
+  },
+  "branding": {
+    "name": "Handy"
+  }
+}
