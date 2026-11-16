@@ -22,7 +22,8 @@
     ]
   },
   "display": {
-    "fps": 30
+    "fps": 30,
+    "theme": "night"
   },
   "audio": {
     "enabled": true

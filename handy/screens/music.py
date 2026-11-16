@@ -217,8 +217,8 @@ class MusicScreen(Screen):
                 self.notify("Search failed")
         player = self.app.music.player
         if player.consume_failed():
-            self.error = "Could not play this track"
-            self.notify("Could not play this track")
+            self.error = player.snapshot().get("error") or "Could not play this track"
+            self.notify(self.error)
         if player.consume_finished():
             if self.queue and self.index + 1 < len(self.queue):
                 self.play_result(self.queue[self.index + 1], self.queue, self.index + 1)

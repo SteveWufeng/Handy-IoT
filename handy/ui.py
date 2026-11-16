@@ -140,9 +140,9 @@ class Button:
             "card": (T.CARD, T.CARD_PRESS, T.TEXT, T.BORDER),
             "accent": (T.ACCENT, T.ACCENT_HI, T.WHITE, None),
             "ghost": (None, T.CARD, T.MUTED, None),
-            "soft": (T.ACCENT_SOFT, (58, 76, 130), T.TEXT, None),
-            "danger": (None, (48, 22, 27), T.DANGER, None),
-            "teal": (T.TEAL, (100, 240, 205), (10, 30, 25), None),
+            "soft": (T.ACCENT_SOFT, T.SOFT_PRESS, T.TEXT, None),
+            "danger": (None, T.DANGER_PRESS, T.DANGER, None),
+            "teal": (T.TEAL, T.TEAL_PRESS, T.TEAL_TEXT, None),
         }
         background, pressed, foreground, border = styles.get(self.style, styles["card"])
         if self.selected:

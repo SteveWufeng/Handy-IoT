@@ -36,6 +36,7 @@ class App:
         pygame.display.set_caption("Handy")
         pygame.mouse.set_visible(False)
         self.size = self.screen.get_size()
+        T.apply_mode(self.config.get("display.theme", "night"))
         self.theme = T.Theme(self.size)
         self.background = T.Background(self.size)
         self.tasks = Tasks()
@@ -94,6 +95,23 @@ class App:
         if (self.calendar.url
                 and time.monotonic() - self._calendar_last_attempt > self._calendar_interval()):
             self.refresh_calendar()
+
+    def toggle_theme(self):
+        previous = self.config.get("display.theme", "night")
+        mode = "day" if previous == "night" else "night"
+        self.config.set("display.theme", mode)
+        try:
+            self.config.save()
+        except OSError:
+            self.config.set("display.theme", previous)
+            self.toast("Could not save theme")
+            return
+        T.apply_mode(mode)
+        self.theme.mode = mode
+        self.background = T.Background(self.size)
+        self.keyboard.layout()
+        self.chime.play("tap")
+        self.toast("Day mode" if mode == "day" else "Night mode")
 
     def toast(self, message, seconds=2.5):
         self._toast_text = message

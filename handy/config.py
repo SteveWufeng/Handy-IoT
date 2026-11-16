@@ -25,7 +25,7 @@ DEFAULTS = {
         "search_results": 20,
         "quick_searches": ["lofi hip hop", "jazz cafe", "piano classical"],
     },
-    "display": {"fps": 30},
+    "display": {"fps": 30, "theme": "night"},
     "audio": {"enabled": True},
     "branding": {"name": "Handy"},
 }

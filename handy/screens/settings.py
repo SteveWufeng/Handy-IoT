@@ -18,18 +18,22 @@ class SettingsScreen(Screen):
                                    width - pad * 2, self.app.size[1] - self.header_height() - theme.px(6) - pad)
         y = self.content.y
         self.cal_header = y
-        y += theme.px(22)
-        self.url_row = pygame.Rect(pad, y, self.content.w, theme.px(68))
+        y += theme.px(18)
+        self.url_row = pygame.Rect(pad, y, self.content.w, theme.px(56))
         y += self.url_row.h + theme.px(8)
-        self.refresh_row = pygame.Rect(pad, y, self.content.w, theme.px(44))
-        y += self.refresh_row.h + theme.px(16)
+        self.refresh_row = pygame.Rect(pad, y, self.content.w, theme.px(36))
+        y += self.refresh_row.h + theme.px(12)
         self.audio_header = y
-        y += theme.px(22)
-        self.volume_row = pygame.Rect(pad, y, self.content.w, theme.px(54))
-        y += self.volume_row.h + theme.px(16)
+        y += theme.px(18)
+        self.volume_row = pygame.Rect(pad, y, self.content.w, theme.px(46))
+        y += self.volume_row.h + theme.px(12)
+        self.display_header = y
+        y += theme.px(18)
+        self.theme_row = pygame.Rect(pad, y, self.content.w, theme.px(40))
+        y += self.theme_row.h + theme.px(12)
         self.status_header = y
-        y += theme.px(22)
-        self.status_row = pygame.Rect(pad, y, self.content.w, theme.px(52))
+        y += theme.px(18)
+        self.status_row = pygame.Rect(pad, y, self.content.w, theme.px(44))
         self.quit_row = pygame.Rect(pad, self.app.size[1] - pad - theme.px(48),
                                     width - pad * 2, theme.px(48))
         button_w = theme.px(64)
@@ -49,6 +53,16 @@ class SettingsScreen(Screen):
         self.plus_button = ui.Button(
             (self.volume_row.right - theme.px(12) - side, self.volume_row.centery - side // 2, side, side),
             icon="plus", style="soft", on_click=lambda: self.adjust_volume(5))
+        theme_button_w = theme.px(76)
+        theme_button_h = theme.px(30)
+        current_mode = self.app.config.get("display.theme", "night")
+        self.theme_button = ui.Button(
+            (self.theme_row.right - theme.px(12) - theme_button_w,
+             self.theme_row.centery - theme_button_h // 2,
+             theme_button_w, theme_button_h),
+            label="Day" if current_mode == "night" else "Night",
+            icon="sun" if current_mode == "night" else "moon",
+            style="soft", on_click=self.app.toggle_theme, size=12)
         self.quit_button = ui.Button(self.quit_row, label="Quit app", icon="power",
                                      style="danger", on_click=self.app.quit, size=14)
 
@@ -87,7 +101,7 @@ class SettingsScreen(Screen):
         if self.handle_header(event):
             return True
         if ui.dispatch([self.edit_button, self.refresh_button, self.minus_button,
-                        self.plus_button, self.quit_button], event):
+                        self.plus_button, self.theme_button, self.quit_button], event):
             return True
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             if self.url_row.collidepoint(event.pos):
@@ -95,6 +109,9 @@ class SettingsScreen(Screen):
                 return True
             if self.refresh_row.collidepoint(event.pos):
                 self.refresh()
+                return True
+            if self.theme_row.collidepoint(event.pos):
+                self.app.toggle_theme()
                 return True
         return False
 
@@ -133,6 +150,15 @@ class SettingsScreen(Screen):
         self.minus_button.draw(surface, theme)
         self.plus_button.draw(surface, theme)
 
+        self.draw_section(surface, theme, self.display_header, "DISPLAY")
+        ui.panel(surface, self.theme_row, T.CARD, theme.px(14), T.BORDER)
+        ui.text(surface, theme.font(13), "Theme", T.TEXT,
+                (self.theme_row.x + pad, self.theme_row.centery), "midleft")
+        mode = self.app.config.get("display.theme", "night")
+        self.theme_button.icon = "sun" if mode == "night" else "moon"
+        self.theme_button.label = "Day" if mode == "night" else "Night"
+        self.theme_button.draw(surface, theme)
+
         self.draw_section(surface, theme, self.status_header, "PLAYER")
         ui.panel(surface, self.status_row, T.CARD, theme.px(14), T.BORDER)
         statuses = self.app.music.status()
@@ -145,13 +171,13 @@ class SettingsScreen(Screen):
             ui.text(surface, theme.font(12), name, T.TEXT,
                     (x + theme.px(14), self.status_row.centery), "midleft")
             ui.text(surface, theme.font(10), "Ready" if ok else "Missing", color,
-                    (x + theme.px(14), self.status_row.centery + theme.px(15)), "midleft")
+                    (x + theme.px(14), self.status_row.centery + theme.px(13)), "midleft")
         display_x = self.status_row.x + pad + column_w * 2
         pygame.draw.circle(surface, T.ACCENT, (display_x + theme.px(4), self.status_row.centery), theme.px(3))
         ui.text(surface, theme.font(12), "Display", T.TEXT,
                 (display_x + theme.px(14), self.status_row.centery), "midleft")
         ui.text(surface, theme.font(10), f"{self.app.size[0]} x {self.app.size[1]}", T.FAINT,
-                (display_x + theme.px(14), self.status_row.centery + theme.px(15)), "midleft")
+                (display_x + theme.px(14), self.status_row.centery + theme.px(13)), "midleft")
 
         self.quit_button.draw(surface, theme)
 

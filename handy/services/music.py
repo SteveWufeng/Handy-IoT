@@ -1,3 +1,4 @@
+import itertools
 import json
 import os
 import shutil
@@ -93,12 +94,16 @@ class Player:
         }
         self._lock = threading.Lock()
         self._stop = threading.Event()
+        self._request_ids = itertools.count(1)
         self._thread = None
         self._media_loaded = False
         self._started = False
         self._deadline = 0.0
         self._finished = False
         self._failed = False
+        self._stderr_lines = []
+        self._stderr_lock = threading.Lock()
+        self._stderr_thread = None
 
     def available(self):
         return find_tool("mpv") is not None
@@ -123,8 +128,7 @@ class Player:
             "--no-video",
             "--idle=yes",
             "--force-window=no",
-            "--really-quiet",
-            "--no-terminal",
+            "--msg-level=file=info,ytdl=warn,all=error",
             "--audio-display=no",
             f"--input-ipc-server={self.socket_path}",
             f"--volume={self.volume}",
@@ -138,18 +142,22 @@ class Player:
             self.process = subprocess.Popen(
                 command,
                 stdin=subprocess.DEVNULL,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
                 env=env,
             )
         except OSError as exc:
             raise MusicError(str(exc))
+        with self._stderr_lock:
+            self._stderr_lines.clear()
+        self._stderr_thread = threading.Thread(target=self._drain_stderr, name="mpv-log", daemon=True)
+        self._stderr_thread.start()
         deadline = time.monotonic() + 6
         while time.monotonic() < deadline:
             if os.path.exists(self.socket_path):
                 break
             if self.process.poll() is not None:
-                raise MusicError("mpv failed to start")
+                raise MusicError(self._error_detail())
             time.sleep(0.05)
         self._stop.clear()
         if self._thread is None or not self._thread.is_alive():
@@ -157,26 +165,58 @@ class Player:
             self._thread.start()
 
     def _command(self, *args, timeout=1.2):
+        request_id = next(self._request_ids)
         try:
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
                 connection.settimeout(timeout)
                 connection.connect(self.socket_path)
-                payload = json.dumps({"command": list(args)}) + "\n"
+                payload = json.dumps({"command": list(args), "request_id": request_id}) + "\n"
                 connection.sendall(payload.encode("utf-8"))
-                if args[0] in ("get_property", "observe_property"):
-                    buffer = b""
-                    while not buffer.endswith(b"\n"):
-                        chunk = connection.recv(4096)
-                        if not chunk:
-                            break
-                        buffer += chunk
-                    if not buffer:
+                buffer = b""
+                deadline = time.monotonic() + timeout
+                while time.monotonic() < deadline:
+                    if b"\n" in buffer:
+                        line, buffer = buffer.split(b"\n", 1)
+                        try:
+                            reply = json.loads(line.decode("utf-8", "ignore"))
+                        except json.JSONDecodeError:
+                            continue
+                        if reply.get("request_id") != request_id:
+                            continue
+                        if args[0] in ("get_property", "observe_property"):
+                            return reply.get("data")
+                        error = reply.get("error")
+                        if error not in (None, "success"):
+                            return str(error)
                         return None
-                    reply = json.loads(buffer.decode("utf-8", "ignore").splitlines()[0])
-                    return reply.get("data")
+                    chunk = connection.recv(4096)
+                    if not chunk:
+                        break
+                    buffer += chunk
         except (OSError, ValueError, json.JSONDecodeError):
             return None
         return None
+
+    def _drain_stderr(self):
+        if self.process is None or self.process.stdout is None:
+            return
+        for raw in self.process.stdout:
+            line = raw.decode("utf-8", "ignore").strip()
+            if not line:
+                continue
+            with self._stderr_lock:
+                self._stderr_lines.append(line)
+                if len(self._stderr_lines) > 12:
+                    self._stderr_lines.pop(0)
+
+    def _error_detail(self):
+        with self._stderr_lock:
+            lines = [line for line in self._stderr_lines if not line.startswith("[ipc")]
+        for line in reversed(lines):
+            if "ERROR" in line or "Failed" in line:
+                message = line.split("] ", 1)[-1] if "] " in line else line
+                return message.removeprefix("ERROR: ")
+        return lines[-1] if lines else "Could not play this track"
 
     def load(self, url, title=""):
         self.start()
@@ -239,6 +279,17 @@ class Player:
     def _poll(self):
         while not self._stop.is_set():
             if self.process is None or self.process.poll() is not None:
+                with self._lock:
+                    if self._media_loaded and not self._stop.is_set():
+                        self._failed = True
+                        self._media_loaded = False
+                        self._started = False
+                        self.state.update({
+                            "playing": False,
+                            "paused": False,
+                            "loading": False,
+                            "error": self._error_detail(),
+                        })
                 return
             if not self._media_loaded:
                 time.sleep(0.3)
@@ -263,7 +314,7 @@ class Player:
                         "playing": False,
                         "paused": False,
                         "loading": False,
-                        "error": "Could not play this track",
+                        "error": self._error_detail(),
                     })
                 if isinstance(position, (int, float)):
                     self.state["position"] = float(position)

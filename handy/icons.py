@@ -145,3 +145,24 @@ def draw(surface, name, rect, color, width=None):
         pygame.draw.rect(surface, color, (rect.x + rect.w * 0.18, rect.y + rect.h * 0.2, rect.w * 0.4, rect.h * 0.6), line, border_radius=unit)
         pygame.draw.line(surface, color, (rect.x + rect.w * 0.48, rect.centery), (rect.x + rect.w * 0.82, rect.centery), line)
         pygame.draw.lines(surface, color, False, [_point(rect, 0.68, 0.38), _point(rect, 0.82, 0.5), _point(rect, 0.68, 0.62)], line)
+    elif name == "sun":
+        center = rect.center
+        radius = min(rect.w, rect.h) * 0.22
+        pygame.draw.circle(surface, color, center, int(radius), line)
+        for i in range(8):
+            angle = math.radians(i * 45)
+            inner = (center[0] + math.cos(angle) * radius * 1.45, center[1] + math.sin(angle) * radius * 1.45)
+            outer = (center[0] + math.cos(angle) * radius * 1.95, center[1] + math.sin(angle) * radius * 1.95)
+            pygame.draw.line(surface, color, inner, outer, max(2, int(line * 0.9)))
+    elif name == "moon":
+        size = int(min(rect.w, rect.h) * 0.88)
+        layer = pygame.Surface((size, size), pygame.SRCALPHA)
+        radius = size // 2
+        offset = max(1, size // 5)
+        margin = max(1, line // 2)
+        pygame.draw.circle(layer, (*color, 255), (radius, radius), max(1, radius - margin))
+        cutter = pygame.Surface((size, size), pygame.SRCALPHA)
+        cutter.fill((255, 255, 255, 255))
+        pygame.draw.circle(cutter, (0, 0, 0, 0), (radius + offset, radius - offset // 2), max(1, radius - margin))
+        layer.blit(cutter, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        surface.blit(layer, (rect.centerx - size // 2, rect.centery - size // 2))
