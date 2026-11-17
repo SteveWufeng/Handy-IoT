@@ -159,13 +159,18 @@ class CalendarService:
         except requests.HTTPError as exc:
             status = exc.response.status_code if exc.response is not None else "?"
             self.error = f"Calendar server returned {status}"
-            raise
+            return self.events
         except requests.RequestException:
             self.error = "Network unavailable"
-            raise
-        except Exception:
-            self.error = "Could not read calendar feed"
-            raise
+            return self.events
+        except (icalendar.error.ICalParsingError, icalendar.error.InvalidCalendar,
+                recurring_ical_events.errors.InvalidCalendar,
+                recurring_ical_events.errors.BadRuleStringFormat,
+                recurring_ical_events.errors.PeriodEndBeforeStart,
+                ValueError, KeyError, TypeError, AttributeError, UnicodeError,
+                OverflowError) as exc:
+            self.error = f"Could not read calendar feed: {exc}"
+            return self.events
         try:
             CACHE_PATH.parent.mkdir(parents=True, exist_ok=True)
             CACHE_PATH.write_bytes(response.content)

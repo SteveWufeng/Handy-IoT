@@ -34,11 +34,13 @@ fi
 
 sudo chown -R "$APP_USER":"$APP_USER" .venv config.json
 
-echo "Installing kiosk service..."
-sudo cp systemd/handy-iot.service /etc/systemd/system/handy-iot.service
-sudo sed -i "s|__USER__|$APP_USER|g; s|__DIR__|$APP_DIR|g" /etc/systemd/system/handy-iot.service
+echo "Installing kiosk and MCP services..."
+for service in handy-iot handy-mcp; do
+  sudo cp "systemd/${service}.service" "/etc/systemd/system/${service}.service"
+  sudo sed -i "s|__USER__|$APP_USER|g; s|__DIR__|$APP_DIR|g" "/etc/systemd/system/${service}.service"
+done
 sudo systemctl daemon-reload
-sudo systemctl enable handy-iot.service
+sudo systemctl enable handy-iot.service handy-mcp.service
 
 if command -v raspi-config >/dev/null 2>&1; then
   sudo raspi-config nonint do_blanking 1 || true
@@ -51,9 +53,10 @@ echo "Install complete."
 echo "1. Open Google Calendar settings, copy the public iCal address of the calendar"
 echo "   and paste it into $APP_DIR/config.json under calendar.ics_url."
 echo "   You can also set it later on the Settings screen of the app."
-echo "2. Start the dashboard with: sudo systemctl start handy-iot"
-echo "3. View logs with: journalctl -u handy-iot -f"
-echo "4. Stop it with: sudo systemctl stop handy-iot"
+echo "2. Start the dashboard and MCP server with: sudo systemctl start handy-iot"
+echo "3. View logs with: journalctl -u handy-iot -u handy-mcp -f"
+echo "4. Stop both with: sudo systemctl stop handy-iot"
+echo "5. The local MCP endpoint is http://127.0.0.1:8765/mcp"
 echo
 echo "The service uses KMSDRM directly on tty1. If your touchscreen is rotated,"
 echo "rotate it at the OS level (config.txt display_rotate or video=...,rotate=90)."

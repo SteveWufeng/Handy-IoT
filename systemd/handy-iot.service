@@ -1,7 +1,7 @@
 [Unit]
 Description=Handy IoT touch dashboard
 After=systemd-user-sessions.service network-online.target sound.target
-Wants=network-online.target
+Wants=network-online.target handy-mcp.service
 Conflicts=getty@tty1.service
 
 [Service]

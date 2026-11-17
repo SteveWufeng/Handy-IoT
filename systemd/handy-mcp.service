@@ -1,0 +1,22 @@
+[Unit]
+Description=Handy IoT MCP server
+After=network-online.target handy-iot.service
+Wants=handy-iot.service
+PartOf=handy-iot.service
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__DIR__
+Environment=HOME=/home/__USER__
+Environment=PATH=__DIR__/.venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=HANDY_MCP_TRANSPORT=streamable-http
+Environment=HANDY_MCP_HOST=127.0.0.1
+Environment=HANDY_MCP_PORT=8765
+Environment=PYTHONUNBUFFERED=1
+ExecStart=__DIR__/.venv/bin/python -m handy.mcp_server
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

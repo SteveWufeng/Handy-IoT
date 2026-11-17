@@ -2,3 +2,4 @@ requests>=2.31.0
 icalendar>=6.0.0
 recurring-ical-events>=3.3.0
 yt-dlp>=2026.10.26
+mcp==2.3.0

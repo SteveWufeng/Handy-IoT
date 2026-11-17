@@ -1,5 +1,7 @@
 import os
+import queue
 import sys
+import threading
 import time
 
 os.environ.setdefault("PYGAME_HIDE_SUPPORT_PROMPT", "1")
@@ -16,6 +18,7 @@ from . import theme as T
 from . import ui
 from .audio import Chime
 from .config import Config
+from .control import ControlBridge, ControlCommandError
 from .screens.home import HomeScreen
 from .services.calendar import CalendarService
 from .services.music import MusicService
@@ -55,6 +58,10 @@ class App:
         self._calendar_future = None
         self._calendar_notify = False
         self._calendar_last_attempt = -1e9
+        self._calendar_lock = threading.Lock()
+        self.control_queue = queue.Queue()
+        self.control = ControlBridge(self)
+        self.control.start()
         self._touch_seen = -10.0
         self._touch_active = False
         self.push(HomeScreen(self))
@@ -63,38 +70,99 @@ class App:
 
     @property
     def calendar_loading(self):
-        return self._calendar_future is not None and not self._calendar_future.done()
+        with self._calendar_lock:
+            future = self._calendar_future
+            return future is not None and not future.done()
 
     def _calendar_interval(self):
         return 60 if self.calendar.error else self.calendar.refresh_minutes * 60
 
     def refresh_calendar(self, notify=False):
-        if self._calendar_future is not None and not self._calendar_future.done():
-            self._calendar_notify = self._calendar_notify or notify
+        with self._calendar_lock:
+            if self._calendar_future is not None and not self._calendar_future.done():
+                self._calendar_notify = self._calendar_notify or notify
+                return self._calendar_future
+            if not self.calendar.url:
+                self.calendar.error = "No calendar URL configured"
+                return None
+            self._calendar_last_attempt = time.monotonic()
+            self._calendar_notify = notify
+            self._calendar_future = self.tasks.submit(self.calendar.refresh)
             return self._calendar_future
-        if not self.calendar.url:
-            self.calendar.error = "No calendar URL configured"
-            return None
-        self._calendar_last_attempt = time.monotonic()
-        self._calendar_notify = notify
-        self._calendar_future = self.tasks.submit(self.calendar.refresh)
-        return self._calendar_future
 
     def _poll_calendar(self):
-        if self._calendar_future is None or not self._calendar_future.done():
-            return
-        future = self._calendar_future
-        self._calendar_future = None
-        notify = self._calendar_notify
-        self._calendar_notify = False
-        try:
-            future.result()
-        except Exception:  # noqa: BLE001
-            if notify:
-                self.toast(self.calendar.error or "Calendar sync failed")
+        with self._calendar_lock:
+            if self._calendar_future is None or not self._calendar_future.done():
+                return
+            future = self._calendar_future
+            self._calendar_future = None
+            notify = self._calendar_notify
+            self._calendar_notify = False
+        future.result()
+        if notify and self.calendar.error:
+            self.toast(self.calendar.error)
         if (self.calendar.url
                 and time.monotonic() - self._calendar_last_attempt > self._calendar_interval()):
             self.refresh_calendar()
+
+    def mcp_calendar_payload(self, params=None):
+        params = params or {}
+        try:
+            limit = int(params.get("limit", self.calendar.max_events))
+        except (TypeError, ValueError):
+            limit = self.calendar.max_events
+        limit = max(0, min(limit, 100))
+        events = self.calendar.upcoming()[:limit]
+        return {
+            "configured": bool(self.calendar.url),
+            "loading": self.calendar_loading,
+            "updated": self.calendar.updated.isoformat() if self.calendar.updated else None,
+            "updated_label": self.calendar.updated_label(),
+            "error": self.calendar.error,
+            "count": len(events),
+            "events": [
+                {
+                    "summary": event.summary,
+                    "start": event.start.isoformat(),
+                    "end": event.end.isoformat(),
+                    "start_date": event.start_date.isoformat(),
+                    "end_date": event.end_date.isoformat(),
+                    "all_day": event.all_day,
+                    "ongoing": event.ongoing,
+                    "location": event.location,
+                    "time_label": event.time_label(),
+                }
+                for event in events
+            ],
+        }
+
+    def mcp_calendar_refresh(self, params=None):
+        future = self.refresh_calendar(notify=True)
+        if future is None:
+            return self.mcp_calendar_payload(params)
+        return future
+
+    def _dispatch_control(self, method, params):
+        if method == "calendar.upcoming":
+            return self.mcp_calendar_payload(params)
+        if method == "calendar.refresh":
+            return self.mcp_calendar_refresh(params)
+        raise ControlCommandError(f"Unsupported method: {method}")
+
+    def _process_control(self):
+        while True:
+            try:
+                item = self.control_queue.get_nowait()
+            except queue.Empty:
+                return
+            future = item["future"]
+            try:
+                result = self._dispatch_control(item["method"], item["params"])
+            except (ControlCommandError, RuntimeError, OSError, ValueError, AttributeError,
+                    TypeError, KeyError) as exc:
+                future.set_exception(exc)
+                continue
+            future.set_result(result)
 
     def toggle_theme(self):
         previous = self.config.get("display.theme", "night")
@@ -210,9 +278,10 @@ class App:
                     if self.keyboard.visible and self.keyboard.handle(normalized):
                         continue
                     self.stack[-1].handle(normalized)
+                self._process_control()
                 self.pomodoro.update(dt)
                 self._poll_calendar()
-                if (self.calendar.url and self._calendar_future is None
+                if (self.calendar.url and not self.calendar_loading
                         and time.monotonic() - self._calendar_last_attempt > self._calendar_interval()):
                     self.refresh_calendar()
                 self.stack[-1].update(dt)
@@ -230,6 +299,7 @@ class App:
     def shutdown(self):
         self.music.shutdown()
         self.tasks.shutdown()
+        self.control.stop()
         pygame.quit()
 
 
